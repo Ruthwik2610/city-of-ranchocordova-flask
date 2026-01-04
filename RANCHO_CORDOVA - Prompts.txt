@@ -1,14 +1,14 @@
 ENERGY EFFICIENCY
 
-1. What is the overall consumption trend in May?
+1. How can I save energy at home?
 
-2. What is the total energy consumption for residential users in May?
+2. What are the best times to run my dishwasher?
 
-3. Which commercial customer has the maximum usage?
+3. Does Rancho Cordova have energy rebate programs?
 
-4. How can I save energy at home?
+4. How do I lower my electric bill?
 
-5. Does Rancho Cordova have energy rebate programs?
+5. What appliances use the most energy?
 
 6. Show me energy forecast for next 2 weeks --> Plotting
 
@@ -23,7 +23,7 @@ CUSTOMER SERVICE
 
 3. How does the city handle service outage reports?
 
-4. Which customer's service is scheduled to stop at the earliest?
+4. When is the trash pickup day in my area?
 
 5. List all the departments of the city.
 
@@ -31,6 +31,4 @@ CUSTOMER SERVICE
 
 7. How do I report a broken streetlight?
 
-8. What permits do I need to build a fence?
-
-9. What are the most common call reasons? --> Plotting
+8. What are the most common call reasons? --> Plotting
