@@ -1,12 +1,12 @@
 """
-Unified Chatbot for Rancho Cordova - FIXED FULLY DYNAMIC RAG
+Enhanced Unified Chatbot for Rancho Cordova with PDF Support
 =============================================================
 
-FIXES:
-1. Hourly data parsing (handles wide-format CSV correctly)
-2. Customer service detection (water bill, pothole, etc.)
-3. Better agent type detection
-4. Simplified energy tips (no reliance on bad CSV format)
+ENHANCEMENTS:
+1. PDF document integration for comprehensive knowledge
+2. Dynamic knowledge extraction (no hardcoded chunks)
+3. Better document-based answers
+4. Improved context from technical reports
 """
 
 import os
@@ -43,7 +43,7 @@ def initialize_models():
         return
 
     MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
-    print("Loading Rancho Cordova models...")
+    print("Loading Rancho Cordova models with PDF support...")
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model = AutoModelForCausalLM.from_pretrained(
@@ -57,11 +57,15 @@ def initialize_models():
     base_path = os.path.join(os.path.dirname(__file__), "data")
     _energy_df = pd.read_csv(os.path.join(base_path, "Energy.txt"))
     _cs_df = pd.read_csv(os.path.join(base_path, "CustomerService.txt"))
-    _dept_df = pd.read_csv(
-        os.path.join(base_path, "Department-city of Rancho Cordova.txt")
-    )
 
-    print("Loading enhanced energy datasets...")
+    # Load department data if available
+    dept_file = os.path.join(base_path, "Department-city of Rancho Cordova.txt")
+    if os.path.exists(dept_file):
+        _dept_df = pd.read_csv(dept_file)
+    else:
+        _dept_df = pd.DataFrame()
+
+    print("Loading enhanced energy datasets with PDF support...")
     loader = get_data_loader()
     print("✅ Enhanced datasets loaded")
 
@@ -84,103 +88,93 @@ def initialize_models():
         _chunks.append(f"CS_RECORD | {text_row}")
 
     # DEPARTMENTS (original)
-    for _, row in _dept_df.iterrows():
-        text_row = " | ".join([f"{col}={row[col]}" for col in _dept_df.columns])
-        _chunks.append(f"DEPT_RECORD | {text_row}")
+    if not _dept_df.empty:
+        for _, row in _dept_df.iterrows():
+            text_row = " | ".join([f"{col}={row[col]}" for col in _dept_df.columns])
+            _chunks.append(f"DEPT_RECORD | {text_row}")
 
     # ========================================================================
-    # DYNAMIC: Extract knowledge from actual CSV files
+    # DYNAMIC: Extract knowledge from actual CSV files and PDFs
     # ========================================================================
 
-    _chunks.extend(_create_energy_saving_tips())  # FIXED - No CSV parsing errors
     _chunks.extend(_extract_benchmark_insights(base_path))
     _chunks.extend(_extract_tou_rate_insights(base_path))
     _chunks.extend(_extract_rebate_insights(base_path))
+    _chunks.extend(_extract_pdf_knowledge())  # NEW: Extract from PDFs
 
     print(f"✅ Total RAG chunks: {len(_chunks)}")
 
     _chunk_embeddings = _embedder.encode(_chunks, convert_to_numpy=True)
 
-    print("✅ Rancho models initialized.")
+    print("✅ Rancho models initialized with PDF support.")
 
 
 # ============================================================================
-# FIXED: Energy-Saving Tips (No complex CSV parsing)
+# NEW: PDF Knowledge Extraction
 # ============================================================================
 
 
-def _create_energy_saving_tips() -> list:
+def _extract_pdf_knowledge() -> list:
     """
-    Create comprehensive energy-saving tips chunks.
-    Based on industry standards, not broken CSV parsing.
+    Extract knowledge chunks from PDF documents.
+    Creates searchable chunks from annual reports and technical documents.
     """
     chunks = []
+    loader = get_data_loader()
+    pdf_contents = loader.get_all_pdf_contents()
 
-    # General energy-saving advice
-    chunks.append(
-        "ENERGY_SAVING_TIPS | "
-        "Question=How_to_lower_electric_bill | "
-        "Answer=To lower your electric bill: 1) Shift major appliance usage to off-peak hours "
-        "(before 4pm or after 9pm weekdays), 2) Upgrade to ENERGY STAR appliances, "
-        "3) Set thermostat to 78°F in summer and 68°F in winter, 4) Switch to LED light bulbs, "
-        "5) Seal air leaks around windows and doors, 6) Use ceiling fans to circulate air, "
-        "7) Run dishwasher and laundry with full loads only, 8) Unplug devices when not in use, "
-        "9) Apply for SMUD rebate programs for qualifying upgrades."
-    )
+    if not pdf_contents:
+        print("  ⚠️  No PDF documents found")
+        return chunks
 
-    chunks.append(
-        "ENERGY_SAVING_TIPS | "
-        "Question=How_to_save_energy_at_home | "
-        "Answer=Save energy at home by: using programmable or smart thermostats, washing clothes "
-        "in cold water, air-drying dishes instead of heat dry, turning off lights when leaving rooms, "
-        "unplugging chargers and electronics when not in use, using power strips to eliminate phantom loads, "
-        "closing blinds during hot afternoons, weatherstripping doors and windows, servicing HVAC systems "
-        "regularly, and replacing old appliances with ENERGY STAR certified models."
-    )
+    print(f"\n📄 Extracting knowledge from {len(pdf_contents)} PDF documents...")
 
-    chunks.append(
-        "ENERGY_SAVING_TIPS | "
-        "Question=Best_times_to_run_appliances | "
-        "Answer=Best times to run major appliances: Run dishwasher, washing machine, dryer, and pool pump "
-        "during off-peak hours - before 4pm or after 9pm on weekdays, or anytime on weekends. "
-        "Peak hours (4-9pm weekdays) have the highest electricity rates. Shifting usage to off-peak "
-        "can save 30-50% on energy costs for these appliances."
-    )
+    for filename, pdf_data in pdf_contents.items():
+        doc_type = _identify_document_type(filename)
 
-    chunks.append(
-        "ENERGY_SAVING_TIPS | "
-        "Question=Best_time_to_run_dishwasher | "
-        "Answer=Best time to run dishwasher is during off-peak hours: before 4pm or after 9pm on weekdays, "
-        "or anytime on weekends. Also: run only when full, use air-dry setting instead of heat dry, "
-        "and scrape (don't rinse) dishes before loading. This can save significant energy and water."
-    )
+        # Split text into manageable chunks (by paragraphs or sections)
+        text = pdf_data["text"]
 
-    chunks.append(
-        "APPLIANCE_ENERGY_INFO | "
-        "Topic=Appliances_that_use_most_energy | "
-        "Answer=The appliances that typically use the most energy in homes are: "
-        "1) HVAC systems (heating/cooling) - about 40-50% of home energy use, "
-        "2) Water heater - about 15-20%, "
-        "3) Washer and dryer - about 10-15%, "
-        "4) Lighting - about 8-12%, "
-        "5) Refrigerator - about 5-8%, "
-        "6) Electric oven and stove - about 3-5%, "
-        "7) Dishwasher - about 1-2%, "
-        "8) TV and electronics - about 3-5%. "
-        "Pool pumps, if present, can use 15-20% of home energy."
-    )
+        # Split by double newlines (paragraphs) or sections
+        sections = re.split(r"\n\n+", text)
 
-    chunks.append(
-        "TIME_OF_USE_INFO | "
-        "Topic=Peak_and_Off_Peak_Hours | "
-        "Peak_Hours=4pm-9pm weekdays | "
-        "Off_Peak_Hours=Before 4pm and after 9pm weekdays, all day weekends | "
-        "Description=SMUD uses time-of-use rates. Peak hours (4-9pm weekdays) have the highest rates. "
-        "Off-peak hours offer significantly lower rates. Plan major energy usage during off-peak times to save money."
-    )
+        chunk_count = 0
+        for i, section in enumerate(sections):
+            section = section.strip()
 
-    print(f"  ✓ Created {len(chunks)} energy-saving tip chunks")
+            # Only include substantial sections (more than 50 characters)
+            if len(section) > 50:
+                # Create a searchable chunk
+                chunk = (
+                    f"PDF_DOCUMENT | "
+                    f"Source={filename} | "
+                    f"Type={doc_type} | "
+                    f"Section={i + 1} | "
+                    f"Content={section[:1000]}"  # Limit to 1000 chars per chunk
+                )
+                chunks.append(chunk)
+                chunk_count += 1
+
+        print(f"  ✓ Extracted {chunk_count} chunks from {filename}")
+
+    print(f"  ✓ Total PDF chunks: {len(chunks)}")
     return chunks
+
+
+def _identify_document_type(filename: str) -> str:
+    """Identify the type of document based on filename"""
+    filename_lower = filename.lower()
+
+    if "annual" in filename_lower or "report" in filename_lower:
+        return "Annual_Report"
+    elif "cec" in filename_lower or "california" in filename_lower:
+        return "Technical_Standard"
+    elif "manual" in filename_lower:
+        return "Manual"
+    elif "policy" in filename_lower:
+        return "Policy_Document"
+    else:
+        return "General_Document"
 
 
 # ============================================================================
@@ -248,24 +242,43 @@ def _extract_tou_rate_insights(base_path: str) -> list:
     csv_path = os.path.join(base_path, "SMUD_TOU_Rates.csv")
 
     if not os.path.exists(csv_path):
-        print("  ⚠️  SMUD_TOU_Rates.csv not found, using defaults")
-        # Add default TOU info
-        chunks.append(
-            "TOU_RATES_INFO | "
-            "Peak_Period=4pm-9pm weekdays | Peak_Rate=Higher | "
-            "Off_Peak_Period=All other times | Off_Peak_Rate=Lower | "
-            "Description=SMUD offers time-of-use rates with peak pricing 4-9pm weekdays. "
-            "Use electricity during off-peak hours to save money."
-        )
+        print("  ⚠️  SMUD_TOU_Rates.csv not found")
         return chunks
 
     try:
         df = pd.read_csv(csv_path)
 
-        # Create a chunk for each rate period
+        # Create chunks for each rate period
         for _, row in df.iterrows():
-            chunk_parts = [f"{col}={row[col]}" for col in df.columns]
-            chunks.append(f"TOU_RATES | {' | '.join(chunk_parts)}")
+            chunks.append(
+                f"TOU_RATE | "
+                f"Plan={row['plan']} | "
+                f"Period={row['period']} | "
+                f"Season={row['season']} | "
+                f"DayType={row['day_type']} | "
+                f"Hours={row['start_time']}-{row['end_time']} | "
+                f"Rate=${row['rate_per_kwh_usd']}/kWh"
+            )
+
+        # Create peak/off-peak summaries
+        if "period" in df.columns:
+            peak_rates = df[df["period"].str.contains("Peak", case=False, na=False)]
+            offpeak_rates = df[df["period"].str.contains("Off", case=False, na=False)]
+
+            if not peak_rates.empty and not offpeak_rates.empty:
+                avg_peak = peak_rates["rate_per_kwh_usd"].mean()
+                avg_offpeak = offpeak_rates["rate_per_kwh_usd"].mean()
+                savings_pct = (avg_peak - avg_offpeak) / avg_peak * 100
+
+                chunks.append(
+                    f"TOU_SAVINGS | "
+                    f"Peak_Rate=${avg_peak:.3f}/kWh | "
+                    f"OffPeak_Rate=${avg_offpeak:.3f}/kWh | "
+                    f"Savings={savings_pct:.0f}% | "
+                    f"Description=You can save up to {savings_pct:.0f}% by shifting energy usage from peak "
+                    f"hours to off-peak hours. Peak rate is ${avg_peak:.2f}/kWh "
+                    f"vs off-peak ${avg_offpeak:.2f}/kWh."
+                )
 
         print(f"  ✓ Extracted {len(chunks)} TOU rate insights")
 
@@ -281,38 +294,43 @@ def _extract_rebate_insights(base_path: str) -> list:
     csv_path = os.path.join(base_path, "SMUD_Rebates.csv")
 
     if not os.path.exists(csv_path):
-        print("  ⚠️  SMUD_Rebates.csv not found, using defaults")
-        # Add default rebate info
-        chunks.append(
-            "REBATE_PROGRAMS | "
-            "Question=Energy_rebate_programs_Rancho_Cordova | "
-            "Answer=Yes! Rancho Cordova residents served by SMUD qualify for energy rebate programs including: "
-            "HVAC system upgrades, pool pump replacements, appliance rebates for ENERGY STAR certified products, "
-            "LED lighting, smart thermostats, weatherization improvements, and solar panel installations. "
-            "Contact SMUD at 1-888-742-7683 or visit smud.org/rebates for current programs and eligibility."
-        )
+        print("  ⚠️  SMUD_Rebates.csv not found")
         return chunks
 
     try:
         df = pd.read_csv(csv_path)
 
-        # Create a chunk for each rebate program
+        # Create chunks for each rebate program
         for _, row in df.iterrows():
-            chunk_parts = [f"{col}={row[col]}" for col in df.columns]
-            chunks.append(f"REBATE_PROGRAM | {' | '.join(chunk_parts)}")
-
-        # Create summary
-        if "Rebate_Amount" in df.columns and "Program_Name" in df.columns:
-            total_programs = len(df)
-            programs_list = ", ".join(df["Program_Name"].head(5).tolist())
-
             chunks.append(
-                f"REBATE_SUMMARY | "
-                f"Total_Programs={total_programs} | "
-                f"Programs_Available={programs_list} | "
-                f"Description=SMUD offers {total_programs} rebate programs for Rancho Cordova residents. "
-                f"Visit smud.org/rebates or call 1-888-742-7683 for details."
+                f"REBATE_PROGRAM | "
+                f"CustomerType={row['customer_type']} | "
+                f"Category={row['program_category']} | "
+                f"Program={row['rebate_name']} | "
+                f"Technologies={row['eligible_technologies']} | "
+                f"Amount={row['typical_rebate_range_usd']} | "
+                f"URL={row.get('program_url', 'N/A')} | "
+                f"Notes={row.get('notes', 'N/A')}"
             )
+
+        # Create category summaries
+        if "program_category" in df.columns:
+            categories = (
+                df.groupby("program_category")
+                .agg({"rebate_name": "count"})
+                .reset_index()
+            )
+            categories.columns = ["program_category", "count"]
+
+            for _, cat in categories.iterrows():
+                category_data = df[df["program_category"] == cat["program_category"]]
+                chunks.append(
+                    f"REBATE_SUMMARY | "
+                    f"Category={cat['program_category']} | "
+                    f"Programs={cat['count']} | "
+                    f"Description=SMUD offers {cat['count']} rebate program(s) in the "
+                    f"{cat['program_category']} category for various energy efficiency upgrades."
+                )
 
         print(f"  ✓ Extracted {len(chunks)} rebate insights")
 
@@ -323,193 +341,295 @@ def _extract_rebate_insights(base_path: str) -> list:
 
 
 # ============================================================================
-# FIXED: Better Agent Type Detection
+# RAG Retrieval
 # ============================================================================
 
 
-def detect_agent_type(query, retrieved_text):
-    """
-    FIXED: Better detection of energy vs customer service queries.
-    """
-    query_lower = query.lower()
+def retrieve_top_k(query: str, k: int = 5) -> list:
+    """Retrieve top-k most relevant chunks for a query."""
+    if _chunks is None or _chunk_embeddings is None:
+        initialize_models()
 
-    # CUSTOMER SERVICE keywords (check FIRST, higher priority)
+    query_emb = _embedder.encode([query], convert_to_numpy=True)
+    similarities = np.dot(_chunk_embeddings, query_emb.T).flatten()
+    top_indices = similarities.argsort()[-k:][::-1]
+
+    return [_chunks[i] for i in top_indices]
+
+
+# ============================================================================
+# Agent Type Detection
+# ============================================================================
+
+
+def detect_agent_type(prompt: str) -> str:
+    """
+    Determine which type of agent should handle this request.
+    Returns: 'energy', 'customer_service', 'visualization', or 'general'
+    """
+    prompt_lower = prompt.lower()
+
+    # Customer service keywords (expanded)
     cs_keywords = [
+        "pothole",
         "water bill",
         "trash",
         "garbage",
-        "pothole",
-        "streetlight",
-        "street light",
+        "recycling",
         "permit",
-        "building",
-        "fence",
-        "construction",
-        "city hall",
-        "department",
-        "who do i call",
-        "who do i contact",
-        "report a",
-        "pay my",
-        "payment",
-        "city services",
-        "public works",
-        "planning",
-        "zoning",
+        "complaint",
+        "report",
+        "request",
+        "service",
+        "problem",
+        "issue",
+        "fix",
+        "repair",
+        "maintenance",
+        "street",
+        "sidewalk",
+        "park",
+        "community",
     ]
-
-    # Check query for customer service keywords FIRST
-    if any(kw in query_lower for kw in cs_keywords):
-        print(
-            f"  → Detected CS keywords in query: {[kw for kw in cs_keywords if kw in query_lower]}"
-        )
+    if any(kw in prompt_lower for kw in cs_keywords):
         return "customer_service"
 
-    # Check retrieved chunks for customer service content
-    if "DEPT_RECORD" in retrieved_text or "CS_RECORD" in retrieved_text:
-        print(f"  → Detected CS chunks in retrieved text")
-        return "customer_service"
+    # Visualization keywords
+    viz_keywords = [
+        "chart",
+        "graph",
+        "plot",
+        "visual",
+        "show me",
+        "display",
+        "compare",
+        "trend",
+        "pattern",
+        "distribution",
+    ]
+    if any(kw in prompt_lower for kw in viz_keywords):
+        return "visualization"
 
-    # ENERGY keywords
+    # Energy keywords
     energy_keywords = [
         "energy",
         "electricity",
+        "power",
         "kwh",
         "bill",
         "consumption",
-        "appliance",
-        "hvac",
-        "rebate",
-        "save energy",
-        "lower",
+        "usage",
+        "rate",
         "peak",
         "off-peak",
-        "rate",
+        "rebate",
+        "save",
+        "savings",
+        "appliance",
+        "smud",
+        "pge",
         "utility",
-        "dishwasher",
-        "dryer",
-        "air conditioning",
+        "thermostat",
+        "hvac",
     ]
-
-    # Check for energy indicators
-    if any(kw in query_lower for kw in energy_keywords):
-        print(
-            f"  → Detected energy keywords: {[kw for kw in energy_keywords if kw in query_lower]}"
-        )
+    if any(kw in prompt_lower for kw in energy_keywords):
         return "energy"
 
-    if any(
-        indicator in retrieved_text
-        for indicator in ["ENERGY", "APPLIANCE", "REBATE", "UTILITY"]
-    ):
-        print(f"  → Detected energy chunks in retrieved text")
-        return "energy"
-
-    # Default to customer_service if ambiguous (safer for city queries)
-    print(f"  → Defaulting to customer_service")
-    return "customer_service"
+    return "general"
 
 
 # ============================================================================
-# Rest of code (unchanged)
+# Generate Response
 # ============================================================================
 
 
-def retrieve(query, top_k=12):
-    """Retrieve most relevant chunks for the query."""
-    print("##### CALLING retrieve()")
-    global _embedder, _chunks, _chunk_embeddings
+def generate_response(prompt: str, use_rag: bool = True, agent_type: str = None) -> str:
+    """
+    Generate chatbot response with optional RAG and agent routing.
 
-    if _embedder is None:
-        initialize_models()
-
-    q_emb = _embedder.encode([query], convert_to_numpy=True)[0]
-
-    scores = (
-        _chunk_embeddings
-        @ q_emb
-        / (np.linalg.norm(_chunk_embeddings, axis=1) * np.linalg.norm(q_emb))
-    )
-
-    top_idx = np.argsort(scores)[::-1][:top_k]
-
-    retrieved_lines = [
-        line for i, line in enumerate(_chunks) if i in top_idx and line.strip()
-    ]
-
-    return "\n".join(retrieved_lines)
-
-
-SYSTEM_PROMPT = """
-You are the official chatbot for the City of Rancho Cordova.
-
-You answer questions ONLY using the information found in the city logs below.
-However, you MAY provide light interpretation, summaries, or clarifications—
-as long as they are clearly grounded in the logs.
-
-Very important rules:
-- You MUST reference the city records directly in your answer.
-- You MAY combine or summarize related log entries.
-- You MAY generalize slightly if it helps clarity.
-- DO NOT invent specific policies, numeric data, or programs that are not in the logs.
-- If the logs do not contain the answer, say:
-  "I don't have that information in the city records."
-
-When showing visualizations, briefly describe what the chart shows.
-
-Your tone: concise, helpful, professional.
-"""
-
-
-def generate_answer(query, agent_type=None):
-    """Generate answer with optional visualization data."""
-    print("##### CALLING generate_answer()")
-
+    Args:
+        prompt: User's question or request
+        use_rag: Whether to use retrieval-augmented generation
+        agent_type: Override automatic agent type detection
+    """
     if _llm is None:
         initialize_models()
 
     model, tokenizer = _llm
 
-    # Retrieve relevant context
-    retrieved = retrieve(query)
+    # Detect agent type if not specified
+    if agent_type is None:
+        agent_type = detect_agent_type(prompt)
 
-    # Auto-detect agent type if not provided
-    if not agent_type:
-        agent_type = detect_agent_type(query, retrieved)
+    print(f"🤖 Agent Type: {agent_type}")
 
-    print(f"Detected agent type: {agent_type}")
+    # Build context
+    if use_rag:
+        context_chunks = retrieve_top_k(prompt, k=5)
+        context = "\n".join(context_chunks)
+        print(f"📚 Retrieved {len(context_chunks)} relevant chunks")
+    else:
+        context = ""
 
-    # Generate visualization if needed
-    visualization = None
+    # Build system message based on agent type
     if agent_type == "energy":
-        visualization = generate_visualization(query, "energy", _energy_df)
+        system_msg = (
+            "You are an energy efficiency expert for Rancho Cordova and SMUD. "
+            "Provide helpful, accurate information about energy usage, rates, rebates, and savings tips. "
+            "Use the provided context to give specific, data-driven answers."
+        )
     elif agent_type == "customer_service":
-        visualization = generate_visualization(query, "customer_service", _cs_df)
-
-    # Generate text answer
-    prompt = f"""
-<s>{SYSTEM_PROMPT}</s>
-<CONTEXT>{retrieved}</CONTEXT>
-<USER>{query}</USER>
-<ASSISTANT>
-"""
-
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-
-    with torch.inference_mode():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=200,
-            do_sample=False,
+        system_msg = (
+            "You are a customer service representative for the City of Rancho Cordova. "
+            "Help residents with city services, complaints, and requests. Be helpful and direct them to "
+            "the appropriate department if needed."
+        )
+    elif agent_type == "visualization":
+        system_msg = (
+            "You are a data visualization assistant. Help create charts and visualizations "
+            "to understand energy data patterns and trends."
+        )
+    else:
+        system_msg = (
+            "You are a helpful assistant for Rancho Cordova residents. "
+            "Provide accurate, concise answers to questions about city services and energy."
         )
 
-    answer = tokenizer.decode(
-        outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
+    # Build the full prompt
+    if context:
+        full_prompt = (
+            f"{system_msg}\n\nContext:\n{context}\n\nQuestion: {prompt}\n\nAnswer:"
+        )
+    else:
+        full_prompt = f"{system_msg}\n\nQuestion: {prompt}\n\nAnswer:"
+
+    # Generate response
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": full_prompt},
+    ]
+
+    text = tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
     )
 
-    return {
-        "answer": answer.strip(),
-        "retrieved_text": retrieved,
-        "visualization": visualization,
-        "agent_type": agent_type,
-    }
+    model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        generated_ids = model.generate(
+            **model_inputs,
+            max_new_tokens=512,
+            temperature=0.7,
+            top_p=0.9,
+            do_sample=True,
+        )
+
+    generated_ids = [
+        output_ids[len(input_ids) :]
+        for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+    ]
+
+    response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+    return response.strip()
+
+
+# ============================================================================
+# Main Chat Function
+# ============================================================================
+
+
+def chat(user_message: str, conversation_history: list = None) -> dict:
+    """
+    Main chat interface with enhanced PDF support.
+
+    Args:
+        user_message: The user's input
+        conversation_history: Optional list of previous messages
+
+    Returns:
+        dict with 'response', 'agent_type', 'context_used'
+    """
+    if _llm is None:
+        initialize_models()
+
+    agent_type = detect_agent_type(user_message)
+
+    # Check if asking about specific documents
+    if any(
+        keyword in user_message.lower()
+        for keyword in ["pdf", "document", "report", "annual"]
+    ):
+        loader = get_data_loader()
+        pdfs = loader.get_all_pdf_contents()
+        if pdfs:
+            pdf_names = ", ".join(pdfs.keys())
+            user_message += f" (Available documents: {pdf_names})"
+
+    response = generate_response(user_message, use_rag=True, agent_type=agent_type)
+
+    return {"response": response, "agent_type": agent_type, "context_used": True}
+
+
+# ============================================================================
+# Backward Compatibility for Flask App
+# ============================================================================
+
+
+def generate_answer(prompt: str, agent_type: str = None) -> dict:
+    if _llm is None:
+        initialize_models()
+
+    if agent_type is None or agent_type == "":
+        agent_type = detect_agent_type(prompt)
+
+    print(f"🤖 Agent Type: {agent_type}")
+    print(f"📝 Query: {prompt}")
+
+    response_text = generate_response(prompt, use_rag=True, agent_type=agent_type)
+    print(f"✅ Response generated: {len(response_text)} chars")
+
+    # Simple visualization
+    visualization = None
+    viz_keywords = [
+        "chart",
+        "graph",
+        "plot",
+        "show",
+        "visualize",
+        "forecast",
+        "trend",
+        "reason",
+        "volume",
+    ]
+
+    if any(kw in prompt.lower() for kw in viz_keywords):
+        print(f"📊 Visualization keywords detected")
+        print(
+            f"📊 Energy DF: {len(_energy_df) if _energy_df is not None else 'None'} rows"
+        )
+        print(f"📊 CS DF: {len(_cs_df) if _cs_df is not None else 'None'} rows")
+        try:
+            print(f"📊 Importing simple_hardcoded_viz...")
+            from .viz import generate_simple_visualization
+
+            print(f"📊 Import successful, generating...")
+            visualization = generate_simple_visualization(prompt, _energy_df, _cs_df)
+            if visualization:
+                print(f"✅ Visualization generated: {len(visualization)} chars")
+            else:
+                print(f"⚠️ generate_simple_visualization returned None")
+        except Exception as e:
+            print(f"❌ Visualization error: {e}")
+            import traceback
+
+            traceback.print_exc()
+    else:
+        print(f"ℹ️ No visualization keywords detected in: {prompt.lower()}")
+
+    result = {"answer": response_text, "visualization": visualization}
+    print(
+        f"📤 Returning: answer={len(result['answer'])} chars, viz={len(result['visualization']) if result['visualization'] else 0} chars"
+    )
+
+    return result

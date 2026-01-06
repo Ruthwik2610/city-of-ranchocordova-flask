@@ -1,34 +1,42 @@
-ENERGY EFFICIENCY
 
-1. How can I save energy at home?
+## AI-Data-2025-R1.csv (Energy Agent)
+What time of day do customers typically use the most electricity? Show me the hourly usage patterns.
+Which customer accounts have the highest total energy consumption over the year? Give me the top 5.
+---
 
-2. What are the best times to run my dishwasher?
+## California_Residential_Energy_Benchmarks_Expanded.csv(Energy Agent)
+How do SMUD's electricity rates compare to PG&E? Am I saving money with SMUD?
+What's the average monthly electricity bill for an apartment versus a single-family home in California?
+---
 
-3. Does Rancho Cordova have energy rebate programs?
+## SMUD_TOU_Rates.csv (Customer Service Agent)
+What are SMUD's peak hours and how much more expensive is electricity during peak times?
+When should I run my dishwasher and washing machine to save the most money on my electric bill?
+---
 
-4. How do I lower my electric bill?
+## SMUD_Rebates.csv (Customer Service Agent)
+I want to replace my old water heater. What rebates does SMUD offer for heat pump water heaters?
+What energy efficiency rebates are available for residential customers? Which program offers the highest rebates?
+---
 
-5. What appliances use the most energy?
+## 2024AnnualReport_5YearSummary.pdf (Energy Agent)
+What does SMUD's 2024 annual report say about their energy performance and customer satisfaction?
+According to the 5-year summary, how has SMUD's renewable energy percentage changed over time?
+---
 
-6. Show me energy forecast for next 2 weeks --> Plotting
+## CEC-200-2021-005-PO.pdf (Energy Agent)
+What are California's current efficiency requirements for residential air conditioning systems?
+According to the California appliance study, what percentage of homes have electric water heaters versus gas water heaters?
+---
 
-7. Compare residential vs commercial consumption --> Plotting
 
 
-CUSTOMER SERVICE
+Plotting commands:
 
-1. Who should I contact for general customer service support?
+## Energy Agent
+1. Show me energy forecast for next 2 weeks
+2. Show energy trend over time
 
-2. What is the process to start or stop city services?
-
-3. How does the city handle service outage reports?
-
-4. When is the trash pickup day in my area?
-
-5. List all the departments of the city.
-
-6. How do I pay my city water bill?
-
-7. How do I report a broken streetlight?
-
-8. What are the most common call reasons? --> Plotting
+## Customer Service Agent
+3. Show call reasons breakdown
+4. Show call volume trend

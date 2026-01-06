@@ -447,209 +447,35 @@
             window.addEventListener("load", () => promptInput.focus());
 
             function createVisualization(vizData) {
-                const chartId = `chart-${Date.now()}`;
+                console.log("📊 Creating visualization, type:", typeof vizData);
+
                 const container = document.createElement("div");
                 container.className = "chart-container";
-                container.innerHTML = `
-                    <div class="chart-title">${vizData.title}</div>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="${chartId}"></canvas>
-                    </div>
-                `;
+                container.style.cssText =
+                    "margin: 20px 0; text-align: center; padding: 15px; background: #f8f9fa; border-radius: 10px;";
 
-                setTimeout(() => {
-                    const ctx = document.getElementById(chartId);
-                    if (!ctx) return;
+                const img = document.createElement("img");
+                img.src = vizData; // vizData is now a base64 string
+                img.style.cssText =
+                    "max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);";
+                img.alt = "Visualization Chart";
 
-                    let chartConfig;
+                img.onload = () => {
+                    console.log(
+                        "✅ Chart displayed!",
+                        img.naturalWidth,
+                        "x",
+                        img.naturalHeight,
+                    );
+                };
 
-                    if (vizData.chart_type === "line") {
-                        chartConfig = {
-                            type: "line",
-                            data: {
-                                labels: vizData.data.map((d) => d.date),
-                                datasets: [
-                                    {
-                                        label: "Forecasted Consumption (kWh)",
-                                        data: vizData.data.map(
-                                            (d) => d.consumption,
-                                        ),
-                                        borderColor: "#28a745",
-                                        backgroundColor:
-                                            "rgba(40, 167, 69, 0.1)",
-                                        tension: 0.3,
-                                        fill: true,
-                                        pointRadius: 4,
-                                        pointHoverRadius: 6,
-                                    },
-                                ],
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: true, position: "top" },
-                                    tooltip: {
-                                        mode: "index",
-                                        intersect: false,
-                                        callbacks: {
-                                            label: function (context) {
-                                                return (
-                                                    context.dataset.label +
-                                                    ": " +
-                                                    context.parsed.y.toFixed(
-                                                        2,
-                                                    ) +
-                                                    " kWh"
-                                                );
-                                            },
-                                        },
-                                    },
-                                },
-                                scales: {
-                                    y: {
-                                        beginAtZero: false,
-                                        title: {
-                                            display: true,
-                                            text: "Energy Consumption (kWh)",
-                                        },
-                                    },
-                                    x: {
-                                        title: { display: true, text: "Date" },
-                                    },
-                                },
-                            },
-                        };
-                    } else if (vizData.chart_type === "bar") {
-                        chartConfig = {
-                            type: "bar",
-                            data: {
-                                labels: vizData.data.map(
-                                    (d) => `${d.category} (n=${d.count})`,
-                                ),
-                                datasets: [
-                                    {
-                                        label: "Average Consumption (kWh)",
-                                        data: vizData.data.map((d) => d.value),
-                                        backgroundColor: [
-                                            "rgba(54, 162, 235, 0.7)",
-                                            "rgba(255, 99, 132, 0.7)",
-                                        ],
-                                        borderColor: [
-                                            "rgba(54, 162, 235, 1)",
-                                            "rgba(255, 99, 132, 1)",
-                                        ],
-                                        borderWidth: 2,
-                                    },
-                                ],
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: false },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function (context) {
-                                                return (
-                                                    "Average: " +
-                                                    context.parsed.y.toFixed(
-                                                        2,
-                                                    ) +
-                                                    " kWh"
-                                                );
-                                            },
-                                        },
-                                    },
-                                },
-                                scales: {
-                                    y: {
-                                        beginAtZero: true,
-                                        title: {
-                                            display: true,
-                                            text: "Average Energy Consumption (kWh)",
-                                        },
-                                    },
-                                    x: {
-                                        title: {
-                                            display: true,
-                                            text: "Account Type",
-                                        },
-                                    },
-                                },
-                            },
-                        };
-                    } else if (vizData.chart_type === "pie") {
-                        // Pie chart for appliance breakdown, renewable mix, etc.
-                        chartConfig = {
-                            type: "pie",
-                            data: {
-                                labels: vizData.data.map((d) => d.category),
-                                datasets: [
-                                    {
-                                        data: vizData.data.map((d) => d.value),
-                                        backgroundColor: [
-                                            "rgba(255, 99, 132, 0.8)",
-                                            "rgba(54, 162, 235, 0.8)",
-                                            "rgba(255, 206, 86, 0.8)",
-                                            "rgba(75, 192, 192, 0.8)",
-                                            "rgba(153, 102, 255, 0.8)",
-                                            "rgba(255, 159, 64, 0.8)",
-                                            "rgba(199, 199, 199, 0.8)",
-                                            "rgba(83, 102, 255, 0.8)",
-                                        ],
-                                        borderColor: "#fff",
-                                        borderWidth: 2,
-                                    },
-                                ],
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: {
-                                        display: true,
-                                        position: "right",
-                                        labels: { boxWidth: 12, padding: 10 },
-                                    },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function (context) {
-                                                const label =
-                                                    context.label || "";
-                                                const value =
-                                                    context.parsed || 0;
-                                                const dataItem =
-                                                    vizData.data[
-                                                        context.dataIndex
-                                                    ];
-                                                const percentage =
-                                                    dataItem.percentage ||
-                                                    (
-                                                        (value /
-                                                            vizData.data.reduce(
-                                                                (sum, item) =>
-                                                                    sum +
-                                                                    item.value,
-                                                                0,
-                                                            )) *
-                                                        100
-                                                    ).toFixed(1);
-                                                return `${label}: ${value} (${percentage}%)`;
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        };
-                    }
+                img.onerror = () => {
+                    console.error("❌ Failed to display chart");
+                    container.innerHTML =
+                        '<p style="color: red;">Failed to load visualization</p>';
+                };
 
-                    if (chartConfig) {
-                        const chart = new Chart(ctx, chartConfig);
-                        chartInstances.push(chart);
-                    }
-                }, 100);
-
+                container.appendChild(img);
                 return container;
             }
 
@@ -704,15 +530,26 @@
                 try {
                     const response = await fetch("/rancho_agent_api", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            query: userMessage,
-                            agent_type: agentType,
-                        }),
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ query: userMessage }),
                     });
 
                     const data = await response.json();
-                    console.log("Response data:", data);
+                    console.log("📊 Response received");
+                    console.log("Has visualization:", !!data.visualization);
+
+                    if (data.visualization) {
+                        console.log(
+                            "Visualization length:",
+                            data.visualization.length,
+                        );
+                        console.log(
+                            "Starts with:",
+                            data.visualization.substring(0, 30),
+                        );
+                    }
 
                     document.getElementById("input-loading").style.display =
                         "none";
@@ -758,7 +595,6 @@
                         <div class="message-content">I apologize, but I encountered an error. Please try again.</div>
                     `;
                     chatWindow.appendChild(errorDiv);
-
                     scrollToBottom();
                 }
             });
