@@ -1,13 +1,3 @@
-"""
-Enhanced Unified Chatbot for Rancho Cordova with PDF Support
-=============================================================
-
-ENHANCEMENTS:
-1. PDF document integration for comprehensive knowledge
-2. Dynamic knowledge extraction (no hardcoded chunks)
-3. Better document-based answers
-4. Improved context from technical reports
-"""
 
 import os
 import re
@@ -19,9 +9,6 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .data_loader import get_data_loader
-
-# Import visualization module
-from .visualizations import generate_visualization
 
 # Globals
 _llm = None
@@ -72,7 +59,7 @@ def initialize_models():
     # Build chunk KB
     _chunks = []
 
-    # ENERGY TABLE (original)
+    # ENERGY TABLE
     for _, row in _energy_df.iterrows():
         _chunks.append(
             f"ENERGY_RECORD | "
@@ -82,43 +69,29 @@ def initialize_models():
             f"EnergyConsumption_kWh={row['EnergyConsumption_kWh']}"
         )
 
-    # CUSTOMER SERVICE (original)
+    # CUSTOMER SERVICE
     for _, row in _cs_df.iterrows():
         text_row = " | ".join([f"{col}={row[col]}" for col in _cs_df.columns])
         _chunks.append(f"CS_RECORD | {text_row}")
 
-    # DEPARTMENTS (original)
+    # DEPARTMENTS
     if not _dept_df.empty:
         for _, row in _dept_df.iterrows():
             text_row = " | ".join([f"{col}={row[col]}" for col in _dept_df.columns])
             _chunks.append(f"DEPT_RECORD | {text_row}")
 
-    # ========================================================================
-    # DYNAMIC: Extract knowledge from actual CSV files and PDFs
-    # ========================================================================
-
     _chunks.extend(_extract_benchmark_insights(base_path))
     _chunks.extend(_extract_tou_rate_insights(base_path))
     _chunks.extend(_extract_rebate_insights(base_path))
-    _chunks.extend(_extract_pdf_knowledge())  # NEW: Extract from PDFs
+    _chunks.extend(_extract_pdf_knowledge())
 
     print(f"✅ Total RAG chunks: {len(_chunks)}")
-
     _chunk_embeddings = _embedder.encode(_chunks, convert_to_numpy=True)
-
     print("✅ Rancho models initialized with PDF support.")
 
 
-# ============================================================================
-# NEW: PDF Knowledge Extraction
-# ============================================================================
-
-
 def _extract_pdf_knowledge() -> list:
-    """
-    Extract knowledge chunks from PDF documents.
-    Creates searchable chunks from annual reports and technical documents.
-    """
+    """Extract knowledge chunks from PDF documents."""
     chunks = []
     loader = get_data_loader()
     pdf_contents = loader.get_all_pdf_contents()
@@ -131,26 +104,19 @@ def _extract_pdf_knowledge() -> list:
 
     for filename, pdf_data in pdf_contents.items():
         doc_type = _identify_document_type(filename)
-
-        # Split text into manageable chunks (by paragraphs or sections)
         text = pdf_data["text"]
-
-        # Split by double newlines (paragraphs) or sections
         sections = re.split(r"\n\n+", text)
 
         chunk_count = 0
         for i, section in enumerate(sections):
             section = section.strip()
-
-            # Only include substantial sections (more than 50 characters)
             if len(section) > 50:
-                # Create a searchable chunk
                 chunk = (
                     f"PDF_DOCUMENT | "
                     f"Source={filename} | "
                     f"Type={doc_type} | "
                     f"Section={i + 1} | "
-                    f"Content={section[:1000]}"  # Limit to 1000 chars per chunk
+                    f"Content={section[:1000]}"
                 )
                 chunks.append(chunk)
                 chunk_count += 1
@@ -162,9 +128,8 @@ def _extract_pdf_knowledge() -> list:
 
 
 def _identify_document_type(filename: str) -> str:
-    """Identify the type of document based on filename"""
+    """Identify document type based on filename"""
     filename_lower = filename.lower()
-
     if "annual" in filename_lower or "report" in filename_lower:
         return "Annual_Report"
     elif "cec" in filename_lower or "california" in filename_lower:
@@ -177,24 +142,17 @@ def _identify_document_type(filename: str) -> str:
         return "General_Document"
 
 
-# ============================================================================
-# DYNAMIC CSV EXTRACTION (Benchmark, TOU, Rebates)
-# ============================================================================
-
-
 def _extract_benchmark_insights(base_path: str) -> list:
     """Dynamically extract utility comparison insights from CSV."""
     chunks = []
     csv_path = os.path.join(base_path, "CA_Benchmarks.csv")
 
     if not os.path.exists(csv_path):
-        print("  ⚠️  CA_Benchmarks.csv not found")
         return chunks
 
     try:
         df = pd.read_csv(csv_path)
 
-        # Create a chunk for each utility/home type combination
         for _, row in df.iterrows():
             chunks.append(
                 f"UTILITY_COMPARISON | "
@@ -207,17 +165,13 @@ def _extract_benchmark_insights(base_path: str) -> list:
                 f"Avg_Monthly_Bill=${row['Est_Avg_Monthly_Bill_usd']}"
             )
 
-        # Create comparison insights (SMUD vs others)
         smud_data = df[df["Utility_or_CCA"] == "SMUD"]
         if not smud_data.empty:
             smud_avg_rate = smud_data["Avg_Rate_usd_per_kWh"].mean()
-
-            # Compare with PG&E
             pge_data = df[df["Utility_or_CCA"] == "PG&E"]
             if not pge_data.empty:
                 pge_avg_rate = pge_data["Avg_Rate_usd_per_kWh"].mean()
                 savings_pct = (pge_avg_rate - smud_avg_rate) / pge_avg_rate * 100
-
                 chunks.append(
                     f"UTILITY_SAVINGS | "
                     f"Comparison=SMUD_vs_PGE | "
@@ -225,10 +179,8 @@ def _extract_benchmark_insights(base_path: str) -> list:
                     f"PGE_Rate=${pge_avg_rate:.3f}/kWh | "
                     f"Savings={savings_pct:.0f}% | "
                     f"Description=SMUD residential customers save approximately {savings_pct:.0f}% on electricity "
-                    f"rates compared to PG&E. SMUD's average rate is ${smud_avg_rate:.2f}/kWh vs PG&E's ${pge_avg_rate:.2f}/kWh."
+                    f"rates compared to PG&E."
                 )
-
-        print(f"  ✓ Extracted {len(chunks)} benchmark insights")
 
     except Exception as e:
         print(f"  ⚠️  Error processing benchmarks: {e}")
@@ -242,13 +194,11 @@ def _extract_tou_rate_insights(base_path: str) -> list:
     csv_path = os.path.join(base_path, "SMUD_TOU_Rates.csv")
 
     if not os.path.exists(csv_path):
-        print("  ⚠️  SMUD_TOU_Rates.csv not found")
         return chunks
 
     try:
         df = pd.read_csv(csv_path)
 
-        # Create chunks for each rate period
         for _, row in df.iterrows():
             chunks.append(
                 f"TOU_RATE | "
@@ -260,7 +210,6 @@ def _extract_tou_rate_insights(base_path: str) -> list:
                 f"Rate=${row['rate_per_kwh_usd']}/kWh"
             )
 
-        # Create peak/off-peak summaries
         if "period" in df.columns:
             peak_rates = df[df["period"].str.contains("Peak", case=False, na=False)]
             offpeak_rates = df[df["period"].str.contains("Off", case=False, na=False)]
@@ -269,18 +218,11 @@ def _extract_tou_rate_insights(base_path: str) -> list:
                 avg_peak = peak_rates["rate_per_kwh_usd"].mean()
                 avg_offpeak = offpeak_rates["rate_per_kwh_usd"].mean()
                 savings_pct = (avg_peak - avg_offpeak) / avg_peak * 100
-
                 chunks.append(
                     f"TOU_SAVINGS | "
-                    f"Peak_Rate=${avg_peak:.3f}/kWh | "
-                    f"OffPeak_Rate=${avg_offpeak:.3f}/kWh | "
                     f"Savings={savings_pct:.0f}% | "
-                    f"Description=You can save up to {savings_pct:.0f}% by shifting energy usage from peak "
-                    f"hours to off-peak hours. Peak rate is ${avg_peak:.2f}/kWh "
-                    f"vs off-peak ${avg_offpeak:.2f}/kWh."
+                    f"Description=You can save up to {savings_pct:.0f}% by shifting energy usage from peak hours to off-peak."
                 )
-
-        print(f"  ✓ Extracted {len(chunks)} TOU rate insights")
 
     except Exception as e:
         print(f"  ⚠️  Error processing TOU rates: {e}")
@@ -294,13 +236,11 @@ def _extract_rebate_insights(base_path: str) -> list:
     csv_path = os.path.join(base_path, "SMUD_Rebates.csv")
 
     if not os.path.exists(csv_path):
-        print("  ⚠️  SMUD_Rebates.csv not found")
         return chunks
 
     try:
         df = pd.read_csv(csv_path)
 
-        # Create chunks for each rebate program
         for _, row in df.iterrows():
             chunks.append(
                 f"REBATE_PROGRAM | "
@@ -308,41 +248,13 @@ def _extract_rebate_insights(base_path: str) -> list:
                 f"Category={row['program_category']} | "
                 f"Program={row['rebate_name']} | "
                 f"Technologies={row['eligible_technologies']} | "
-                f"Amount={row['typical_rebate_range_usd']} | "
-                f"URL={row.get('program_url', 'N/A')} | "
-                f"Notes={row.get('notes', 'N/A')}"
+                f"Amount={row['typical_rebate_range_usd']}"
             )
-
-        # Create category summaries
-        if "program_category" in df.columns:
-            categories = (
-                df.groupby("program_category")
-                .agg({"rebate_name": "count"})
-                .reset_index()
-            )
-            categories.columns = ["program_category", "count"]
-
-            for _, cat in categories.iterrows():
-                category_data = df[df["program_category"] == cat["program_category"]]
-                chunks.append(
-                    f"REBATE_SUMMARY | "
-                    f"Category={cat['program_category']} | "
-                    f"Programs={cat['count']} | "
-                    f"Description=SMUD offers {cat['count']} rebate program(s) in the "
-                    f"{cat['program_category']} category for various energy efficiency upgrades."
-                )
-
-        print(f"  ✓ Extracted {len(chunks)} rebate insights")
 
     except Exception as e:
         print(f"  ⚠️  Error processing rebates: {e}")
 
     return chunks
-
-
-# ============================================================================
-# RAG Retrieval
-# ============================================================================
 
 
 def retrieve_top_k(query: str, k: int = 5) -> list:
@@ -357,80 +269,32 @@ def retrieve_top_k(query: str, k: int = 5) -> list:
     return [_chunks[i] for i in top_indices]
 
 
-# ============================================================================
-# Agent Type Detection
-# ============================================================================
-
-
 def detect_agent_type(prompt: str) -> str:
-    """
-    Determine which type of agent should handle this request.
-    Returns: 'energy', 'customer_service', 'visualization', or 'general'
-    """
+    """Determine which agent should handle this request."""
     prompt_lower = prompt.lower()
-
-    # Customer service keywords (expanded)
-    cs_keywords = [
-        "pothole",
-        "water bill",
-        "trash",
-        "garbage",
-        "recycling",
-        "permit",
-        "complaint",
-        "report",
-        "request",
-        "service",
-        "problem",
-        "issue",
-        "fix",
-        "repair",
-        "maintenance",
-        "street",
-        "sidewalk",
-        "park",
-        "community",
-    ]
-    if any(kw in prompt_lower for kw in cs_keywords):
-        return "customer_service"
 
     # Visualization keywords
     viz_keywords = [
-        "chart",
-        "graph",
-        "plot",
-        "visual",
-        "show me",
-        "display",
-        "compare",
-        "trend",
-        "pattern",
-        "distribution",
+        "chart", "graph", "plot", "visual", "show me", "display",
+        "compare", "trend", "pattern", "distribution", "over time",
+        "forecast", "history", "timeline"
     ]
     if any(kw in prompt_lower for kw in viz_keywords):
         return "visualization"
 
+    # Customer service keywords
+    cs_keywords = [
+        "pothole", "water bill", "trash", "garbage", "recycling",
+        "permit", "complaint", "report", "request", "service",
+        "problem", "issue", "fix", "repair"
+    ]
+    if any(kw in prompt_lower for kw in cs_keywords):
+        return "customer_service"
+
     # Energy keywords
     energy_keywords = [
-        "energy",
-        "electricity",
-        "power",
-        "kwh",
-        "bill",
-        "consumption",
-        "usage",
-        "rate",
-        "peak",
-        "off-peak",
-        "rebate",
-        "save",
-        "savings",
-        "appliance",
-        "smud",
-        "pge",
-        "utility",
-        "thermostat",
-        "hvac",
+        "energy", "electricity", "power", "kwh", "bill",
+        "consumption", "usage", "rate", "peak", "rebate", "save"
     ]
     if any(kw in prompt_lower for kw in energy_keywords):
         return "energy"
@@ -438,72 +302,70 @@ def detect_agent_type(prompt: str) -> str:
     return "general"
 
 
-# ============================================================================
-# Generate Response
-# ============================================================================
-
-
 def generate_response(prompt: str, use_rag: bool = True, agent_type: str = None) -> str:
     """
-    Generate chatbot response with optional RAG and agent routing.
-
-    Args:
-        prompt: User's question or request
-        use_rag: Whether to use retrieval-augmented generation
-        agent_type: Override automatic agent type detection
+    Generate CUSTOMER-FRIENDLY response (NO CODE EVER).
     """
     if _llm is None:
         initialize_models()
 
     model, tokenizer = _llm
 
-    # Detect agent type if not specified
     if agent_type is None:
         agent_type = detect_agent_type(prompt)
-
-    print(f"🤖 Agent Type: {agent_type}")
 
     # Build context
     if use_rag:
         context_chunks = retrieve_top_k(prompt, k=5)
         context = "\n".join(context_chunks)
-        print(f"📚 Retrieved {len(context_chunks)} relevant chunks")
     else:
         context = ""
 
-    # Build system message based on agent type
-    if agent_type == "energy":
+    # ========================================================================
+    # CRITICAL: System prompts that PREVENT code generation
+    # ========================================================================
+    
+    if agent_type == "visualization":
+        system_msg = (
+            "You are a friendly energy data assistant for Rancho Cordova residents. "
+            "When asked about trends, patterns, or visualizations, explain the data insights "
+            "in simple, clear language. DO NOT write any code. DO NOT show Python, SQL, or any "
+            "programming language. Just explain what the data shows in plain English. "
+            "A chart will be automatically generated and shown to the user."
+        )
+    elif agent_type == "energy":
         system_msg = (
             "You are an energy efficiency expert for Rancho Cordova and SMUD. "
-            "Provide helpful, accurate information about energy usage, rates, rebates, and savings tips. "
-            "Use the provided context to give specific, data-driven answers."
+            "Provide helpful, accurate information in plain English. "
+            "NEVER write code or technical commands. Speak naturally like a helpful neighbor."
         )
     elif agent_type == "customer_service":
         system_msg = (
-            "You are a customer service representative for the City of Rancho Cordova. "
-            "Help residents with city services, complaints, and requests. Be helpful and direct them to "
-            "the appropriate department if needed."
-        )
-    elif agent_type == "visualization":
-        system_msg = (
-            "You are a data visualization assistant. Help create charts and visualizations "
-            "to understand energy data patterns and trends."
+            "You are a friendly customer service representative for the City of Rancho Cordova. "
+            "Help residents with city services. Be conversational and helpful. "
+            "Never show code or technical details."
         )
     else:
         system_msg = (
             "You are a helpful assistant for Rancho Cordova residents. "
-            "Provide accurate, concise answers to questions about city services and energy."
+            "Answer in simple, friendly language. Never write code."
         )
 
-    # Build the full prompt
+    # Build full prompt
     if context:
         full_prompt = (
-            f"{system_msg}\n\nContext:\n{context}\n\nQuestion: {prompt}\n\nAnswer:"
+            f"{system_msg}\n\n"
+            f"Context Data:\n{context}\n\n"
+            f"Resident Question: {prompt}\n\n"
+            f"Your Response (in plain English, NO CODE):"
         )
     else:
-        full_prompt = f"{system_msg}\n\nQuestion: {prompt}\n\nAnswer:"
+        full_prompt = (
+            f"{system_msg}\n\n"
+            f"Resident Question: {prompt}\n\n"
+            f"Your Response:"
+        )
 
-    # Generate response
     messages = [
         {"role": "system", "content": system_msg},
         {"role": "user", "content": full_prompt},
@@ -518,65 +380,59 @@ def generate_response(prompt: str, use_rag: bool = True, agent_type: str = None)
     with torch.no_grad():
         generated_ids = model.generate(
             **model_inputs,
-            max_new_tokens=512,
+            max_new_tokens=300,  # Shorter to prevent code generation
             temperature=0.7,
             top_p=0.9,
             do_sample=True,
         )
 
     generated_ids = [
-        output_ids[len(input_ids) :]
+        output_ids[len(input_ids):]
         for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
     ]
 
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
+    # ========================================================================
+    # SAFETY CHECK: Remove any code that slipped through
+    # ========================================================================
+    response = _remove_code_from_response(response)
+
     return response.strip()
 
 
-# ============================================================================
-# Main Chat Function
-# ============================================================================
-
-
-def chat(user_message: str, conversation_history: list = None) -> dict:
+def _remove_code_from_response(text: str) -> str:
     """
-    Main chat interface with enhanced PDF support.
-
-    Args:
-        user_message: The user's input
-        conversation_history: Optional list of previous messages
-
-    Returns:
-        dict with 'response', 'agent_type', 'context_used'
+    Safety filter: Remove any code blocks that accidentally got generated.
     """
-    if _llm is None:
-        initialize_models()
-
-    agent_type = detect_agent_type(user_message)
-
-    # Check if asking about specific documents
-    if any(
-        keyword in user_message.lower()
-        for keyword in ["pdf", "document", "report", "annual"]
-    ):
-        loader = get_data_loader()
-        pdfs = loader.get_all_pdf_contents()
-        if pdfs:
-            pdf_names = ", ".join(pdfs.keys())
-            user_message += f" (Available documents: {pdf_names})"
-
-    response = generate_response(user_message, use_rag=True, agent_type=agent_type)
-
-    return {"response": response, "agent_type": agent_type, "context_used": True}
-
-
-# ============================================================================
-# Backward Compatibility for Flask App
-# ============================================================================
+    # Remove Python code blocks
+    text = re.sub(r'```python.*?```', '[Chart generated automatically]', text, flags=re.DOTALL)
+    text = re.sub(r'```.*?```', '[Chart generated automatically]', text, flags=re.DOTALL)
+    
+    # Remove import statements
+    text = re.sub(r'import\s+\w+.*', '', text)
+    text = re.sub(r'from\s+\w+.*', '', text)
+    
+    # Remove common code patterns
+    code_patterns = [
+        r'def\s+\w+\(.*?\):',
+        r'class\s+\w+:',
+        r'plt\.\w+\(',
+        r'pd\.\w+\(',
+        r'df\[.*?\]',
+    ]
+    
+    for pattern in code_patterns:
+        text = re.sub(pattern, '', text)
+    
+    return text.strip()
 
 
 def generate_answer(prompt: str, agent_type: str = None) -> dict:
+    """
+    Main entry point for Flask app.
+    Returns natural language + optional visualization (NO CODE TO CUSTOMER).
+    """
     if _llm is None:
         initialize_models()
 
@@ -586,50 +442,70 @@ def generate_answer(prompt: str, agent_type: str = None) -> dict:
     print(f"🤖 Agent Type: {agent_type}")
     print(f"📝 Query: {prompt}")
 
+    # Get natural language response (NO CODE)
     response_text = generate_response(prompt, use_rag=True, agent_type=agent_type)
+    
+    # Make sure no code leaked through
+    response_text = _remove_code_from_response(response_text)
+    
     print(f"✅ Response generated: {len(response_text)} chars")
 
-    # Simple visualization
+    # Generate visualization if needed
     visualization = None
-    viz_keywords = [
-        "chart",
-        "graph",
-        "plot",
-        "show",
-        "visualize",
-        "forecast",
-        "trend",
-        "reason",
-        "volume",
-    ]
-
-    if any(kw in prompt.lower() for kw in viz_keywords):
-        print(f"📊 Visualization keywords detected")
-        print(
-            f"📊 Energy DF: {len(_energy_df) if _energy_df is not None else 'None'} rows"
-        )
-        print(f"📊 CS DF: {len(_cs_df) if _cs_df is not None else 'None'} rows")
+    
+    if agent_type == "visualization":
+        print(f"📊 Generating visualization...")
         try:
-            print(f"📊 Importing simple_hardcoded_viz...")
             from .viz import generate_simple_visualization
-
-            print(f"📊 Import successful, generating...")
             visualization = generate_simple_visualization(prompt, _energy_df, _cs_df)
+            
             if visualization:
-                print(f"✅ Visualization generated: {len(visualization)} chars")
+                print(f"✅ Visualization generated")
+                # Add friendly message about the chart
+                response_text += "\n\n📊 I've created a chart below to show you this visually."
             else:
-                print(f"⚠️ generate_simple_visualization returned None")
+                print(f"⚠️ Visualization generation returned None")
+                response_text += "\n\nI'd love to show you a chart, but I'm having trouble generating it right now."
+                
         except Exception as e:
             print(f"❌ Visualization error: {e}")
             import traceback
-
             traceback.print_exc()
-    else:
-        print(f"ℹ️ No visualization keywords detected in: {prompt.lower()}")
 
-    result = {"answer": response_text, "visualization": visualization}
-    print(
-        f"📤 Returning: answer={len(result['answer'])} chars, viz={len(result['visualization']) if result['visualization'] else 0} chars"
-    )
-
+    result = {
+        "answer": response_text,
+        "visualization": visualization
+    }
+    
+    print(f"📤 Returning to customer: {len(result['answer'])} chars")
+    
     return result
+
+
+def chat(user_message: str, conversation_history: list = None) -> dict:
+    """
+    Main chat interface with enhanced PDF support.
+    """
+    if _llm is None:
+        initialize_models()
+
+    agent_type = detect_agent_type(user_message)
+
+    # Check for document references
+    if any(keyword in user_message.lower() for keyword in ["pdf", "document", "report", "annual"]):
+        loader = get_data_loader()
+        pdfs = loader.get_all_pdf_contents()
+        if pdfs:
+            pdf_names = ", ".join(pdfs.keys())
+            user_message += f" (Available documents: {pdf_names})"
+
+    response = generate_response(user_message, use_rag=True, agent_type=agent_type)
+    
+    # Safety check
+    response = _remove_code_from_response(response)
+
+    return {
+        "response": response,
+        "agent_type": agent_type,
+        "context_used": True
+    }
