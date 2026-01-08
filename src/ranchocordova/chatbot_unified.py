@@ -29,7 +29,7 @@ def initialize_models():
     if _llm is not None:
         return
 
-    MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+    MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3"
     print("Loading Rancho Cordova models with PDF support...")
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -509,3 +509,4 @@ def chat(user_message: str, conversation_history: list = None) -> dict:
         "agent_type": agent_type,
         "context_used": True
     }
+
